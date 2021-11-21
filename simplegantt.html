@@ -1,0 +1,124 @@
+<html>
+    <head>
+        <meta charset="utf-8"/>
+        <title>Simple Ganntt Chart Generator</title>
+        <script>
+
+            function calculateGanttChart(input){
+                var output = {...input};
+                
+                output.effort = {
+                    available : output.teamMembers.length * output.availableDuration,
+                    used: 0,
+                    diff: -1
+                };
+                
+                output.taskTotals = []; // check if allocation matches available resources
+                output.weekTotals = []; // check if allocation matches task effort estimate
+
+                for (let w = 0; w < output.availableDuration; w++) {
+                    output.weekTotals.push({effort:0,diff:-1});  //init the week total for use later
+                    output.tasks.forEach((task,i) => {
+                        if (w == 0) {
+                            task.weeklyEffort = [];
+                            task.remainingEffort = task.effort;
+                            output.taskTotals.push({effort:0,diff:-1});  //init the task total for use below 
+                        }
+                        task.weeklyEffort.push(task.remainingEffort > 0 ? 1 : 0);
+
+                        output.taskTotals[i].effort += task.weeklyEffort[w];
+                        output.taskTotals[i].diff = (task.effort - output.taskTotals[i].effort);
+                        
+                        output.weekTotals[w].effort += task.weeklyEffort[w];
+                        output.weekTotals[w].diff = (output.teamMembers.length - output.weekTotals[w].effort);
+
+                        output.effort.used += task.weeklyEffort[w];
+                        output.effort.diff = (output.effort.available - output.effort.used);
+
+                        task.remainingEffort--;
+                    });
+
+                }
+                return output;
+            }
+
+            function addDays(date,days){
+                var result = new Date(date);
+                result.setDate(result.getDate() + days);
+                return result;
+            }
+
+            function formatDate(date){
+                return `${date.getMonth()+1}/${date.getDate()}`;
+            }
+
+            function renderGanttChart(input,displayAt){
+                var gc ="";
+                gc += `<div><span># Team members: </span><span>${input.teamMembers.length}</span>`;
+                gc += `<div><span># Available Duration: </span><span>${input.availableDuration}</span>`;
+                gc += `<div><span># Available Weeks: </span><span>${input.effort.available}</span>`;
+                gc += `<div><span># Used Weeks: </span><span>${input.effort.used}(${input.effort.diff})</span>`;
+                gc += "<table border=1>";
+                gc += "<tr><th>Desc</th><th>Eff(w)</th>";
+
+                for (let w = 0; w < input.availableDuration; w++) {
+                    let currStartDate = addDays(input.startDate,w*7);
+                    gc += `<th>${formatDate(currStartDate)}</th>`;
+                }
+                gc += "<th>Task Totals</th>";
+                gc += "<th>Diff</th>";
+                gc += "</tr>";
+
+                input.tasks.forEach((task,i) => {
+                    gc += "<tr>";
+                    gc += `<td>${task.desc}</td>`;
+                    gc += `<td>${task.effort}</td>`;
+                    task.weeklyEffort.forEach(week => {
+                        gc += `<td>${week}</td>`;
+                    });
+                    gc += `<td>${input.taskTotals[i].effort}</td>`;
+                    gc += `<td ${input.taskTotals[i].diff !=0 ? "style='background-color:red'" : ""}'>${input.taskTotals[i].diff}</td>`;
+                    gc += "</tr>";
+                });
+
+                gc += "<tr><td style='font-weight:bold'>Total</td><td></td>";
+                gc1 = "";
+
+                input.weekTotals.forEach(w => {
+                    gc += `<td>${w.effort}</td>`;
+                    gc1 += `<td style='background-color:${w.diff >= 0 ? "green" : "red"}'>${w.diff}</td>`;
+                });
+                
+                gc += "<tr><td style='font-weight:bold'>Diff</td><td></td>";
+                gc += gc1;
+
+                gc += "</table>"
+
+                displayAt.innerHTML = gc;
+                
+            }
+
+            window.onload = function () {
+                let input = {
+                    tasks : [
+                         {desc:"foo", effort : 214}
+                        ,{desc:"bar", effort : 13}
+                        ,{desc:"baz", effort : 2}
+                    ],
+                    startDate : new Date(2022,(10-1),1),
+                    availableDuration: 13,
+                    teamMembers: ["Engr A","Engr B", "Engr C"]
+                };
+                let displayAt = document.getElementById("sgcc");
+
+                let gc = calculateGanttChart(input);
+                renderGanttChart(gc,displayAt);
+            }
+            
+        </script>
+    </head>
+    <body>
+        <h1>Simple Gantt Chart Generator</h1>
+        <div id="sgcc"></div>
+    </body>
+</html>
