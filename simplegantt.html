@@ -1,7 +1,7 @@
 <html>
     <head>
         <meta charset="utf-8"/>
-        <title>Simple Ganntt Chart Generator</title>
+        <title>Simple Gantt Chart Generator</title>
         <script>
 
             function calculateGanttChart(input){
@@ -18,26 +18,55 @@
 
                 for (let w = 0; w < output.availableDuration; w++) {
                     output.weekTotals.push({effort:0,diff:-1});  //init the week total for use later
-                    output.tasks.forEach((task,i) => {
+
+                    for (let i = 0; i < output.tasks.length; i++) {
+                        let task = output.tasks[i];
                         if (w == 0) {
                             task.weeklyEffort = [];
                             task.remainingEffort = task.effort;
                             output.taskTotals.push({effort:0,diff:-1});  //init the task total for use below 
                         }
-                        task.weeklyEffort.push(task.remainingEffort > 0 ? 1 : 0);
+                        
+                        // total remaining effort | current task remaining effort | what to do
+                        //        >1              |     >1                        |    use 1, update total remaining
+                        //        >1              |     =1                        |    use 1, update total remaining
+                        //        >1              |     <1                        |    use amount reqd, update total remaining
+                        //        1               |     >1                        |    use 1, update total remaining
+                        //        1               |     =1                        |    use 1, update total remaining
+                        //        1               |     <1                        |    use amount reqd, update total remaining
+                        //        <1              |     >1                        |    use amount avail, update total remaining
+                        //        <1              |     =1                        |    use amount avail, update total remaining
+                        //        <1              |     <1, > avail               |    use amount avail, update total remaining
+                        //        <1              |     <1, = avail               |    use amount avail, update total remaining
+                        //        <1              |     <1, < avail               |    use amount reqd, update total remaining
+
+                        let availableCapacity = output.teamMembers.length - output.weekTotals[w].effort;
+                        let usedThisWeekForTask = 0;
+
+                        if(availableCapacity >= 1 && task.remainingEffort >= 1) usedThisWeekForTask = 1;
+                        if(availableCapacity >= 1 && task.remainingEffort <  1) usedThisWeekForTask = task.remainingEffort;
+                        if(availableCapacity == 1 && task.remainingEffort <  1) usedThisWeekForTask = task.remainingEffort;
+                        if(availableCapacity  < 1 && task.remainingEffort >= 1) usedThisWeekForTask = availableCapacity;
+                        if(availableCapacity  < 1 && task.remainingEffort >=1 
+                                && task.remainingEffort >= availableCapacity  ) usedThisWeekForTask = availableCapacity;
+                        if(availableCapacity  < 1 && task.remainingEffort >=1 
+                                && task.remainingEffort < availableCapacity  ) usedThisWeekForTask = task.remainingEffort;
+
+                        task.weeklyEffort.push(usedThisWeekForTask);  
 
                         output.taskTotals[i].effort += task.weeklyEffort[w];
-                        output.taskTotals[i].diff = (task.effort - output.taskTotals[i].effort);
+                        let diffT = task.effort - output.taskTotals[i].effort;
+                        output.taskTotals[i].diff = diffT;  //(Math.abs(diffT) > output.diffTolerance ? diffT : 0);
                         
                         output.weekTotals[w].effort += task.weeklyEffort[w];
                         output.weekTotals[w].diff = (output.teamMembers.length - output.weekTotals[w].effort);
 
                         output.effort.used += task.weeklyEffort[w];
-                        output.effort.diff = (output.effort.available - output.effort.used);
+                        let diffW = output.effort.available - output.effort.used;
+                        output.effort.diff = diffW;   // (Math.abs(diffW) > output.diffTolerance) ? diffW : 0;
 
-                        task.remainingEffort--;
-                    });
-
+                        task.remainingEffort -= usedThisWeekForTask;
+                    }
                 }
                 return output;
             }
@@ -50,6 +79,11 @@
 
             function formatDate(date){
                 return `${date.getMonth()+1}/${date.getDate()}`;
+            }
+
+            function formattedNumber(n){
+                //from https://stackoverflow.com/a/30106316
+                return n.toLocaleString(undefined,{minimumFractionDigits:2});
             }
 
             function renderGanttChart(input,displayAt){
@@ -69,15 +103,18 @@
                 gc += "<th>Diff</th>";
                 gc += "</tr>";
 
+
                 input.tasks.forEach((task,i) => {
                     gc += "<tr>";
                     gc += `<td>${task.desc}</td>`;
                     gc += `<td>${task.effort}</td>`;
+                    let taskColor = Math.floor(Math.random()*16777215).toString(16); //from https://css-tricks.com/snippets/javascript/random-hex-color/
                     task.weeklyEffort.forEach(week => {
-                        gc += `<td>${week}</td>`;
+                        let s = (week > 0) ? `style='background-color:#${taskColor}'`: "";
+                        gc += `<td ${s}>${week > 0 ? formattedNumber(week) : ""}</td>`;
                     });
-                    gc += `<td>${input.taskTotals[i].effort}</td>`;
-                    gc += `<td ${input.taskTotals[i].diff !=0 ? "style='background-color:red'" : ""}'>${input.taskTotals[i].diff}</td>`;
+                    gc += `<td>${formattedNumber(input.taskTotals[i].effort)}</td>`;
+                    gc += `<td ${input.taskTotals[i].diff !=0 ? "style='background-color:red'" : ""}'>${formattedNumber(input.taskTotals[i].diff)}</td>`;
                     gc += "</tr>";
                 });
 
@@ -86,7 +123,7 @@
 
                 input.weekTotals.forEach(w => {
                     gc += `<td>${w.effort}</td>`;
-                    gc1 += `<td style='background-color:${w.diff >= 0 ? "green" : "red"}'>${w.diff}</td>`;
+                    gc1 += `<td style='background-color:${w.diff == 0 ? "lightgreen" : (w.diff >0 ? "green" : "red")}'>${w.diff}</td>`;
                 });
                 
                 gc += "<tr><td style='font-weight:bold'>Diff</td><td></td>";
@@ -98,16 +135,121 @@
                 
             }
 
-            window.onload = function () {
+            // from https://stackoverflow.com/a/1293163
+            function CSVToArray( strData, strDelimiter ){
+                // Check to see if the delimiter is defined. If not,
+                // then default to comma.
+                strDelimiter = (strDelimiter || ",");
+
+                // Create a regular expression to parse the CSV values.
+                var objPattern = new RegExp(
+                    (
+                        // Delimiters.
+                        "(\\" + strDelimiter + "|\\r?\\n|\\r|^)" +
+
+                        // Quoted fields.
+                        "(?:\"([^\"]*(?:\"\"[^\"]*)*)\"|" +
+
+                        // Standard fields.
+                        "([^\"\\" + strDelimiter + "\\r\\n]*))"
+                    ),
+                    "gi"
+                    );
+
+
+                // Create an array to hold our data. Give the array
+                // a default empty first row.
+                var arrData = [[]];
+
+                // Create an array to hold our individual pattern
+                // matching groups.
+                var arrMatches = null;
+
+
+                // Keep looping over the regular expression matches
+                // until we can no longer find a match.
+                while (arrMatches = objPattern.exec( strData )){
+
+                    // Get the delimiter that was found.
+                    var strMatchedDelimiter = arrMatches[ 1 ];
+
+                    // Check to see if the given delimiter has a length
+                    // (is not the start of string) and if it matches
+                    // field delimiter. If id does not, then we know
+                    // that this delimiter is a row delimiter.
+                    if (
+                        strMatchedDelimiter.length &&
+                        strMatchedDelimiter !== strDelimiter
+                        ){
+
+                        // Since we have reached a new row of data,
+                        // add an empty row to our data array.
+                        arrData.push( [] );
+
+                    }
+
+                    var strMatchedValue;
+
+                    // Now that we have our delimiter out of the way,
+                    // let's check to see which kind of value we
+                    // captured (quoted or unquoted).
+                    if (arrMatches[ 2 ]){
+
+                        // We found a quoted value. When we capture
+                        // this value, unescape any double quotes.
+                        strMatchedValue = arrMatches[ 2 ].replace(
+                            new RegExp( "\"\"", "g" ),
+                            "\""
+                            );
+
+                    } else {
+
+                        // We found a non-quoted value.
+                        strMatchedValue = arrMatches[ 3 ];
+
+                    }
+
+
+                    // Now that we have our value string, let's add
+                    // it to the data array.
+                    arrData[ arrData.length - 1 ].push( strMatchedValue );
+                }
+
+                // Return the parsed data.
+                return( arrData );
+            }
+
+            function toSGObject(arr){
+                var result = [];
+                for (const line of arr) {
+                    let task = {
+                        desc: line[0] == "" ? "&lt;Blank line, remove&gt;": line[0],
+                        effort: line[1] == undefined ? 0 : line[1]
+                    };
+                    result.push(task);
+                }
+                return result;
+            }
+
+            function toDelimiter(formValue){
+                switch (formValue) {
+                    case "tsv":
+                        return "	";
+                    case "csv":
+                        return ";";
+                    default:
+                        return ";";
+                }
+            }
+
+            // window.onload = function () {
+            let demo = function () {
                 let input = {
-                    tasks : [
-                         {desc:"foo", effort : 214}
-                        ,{desc:"bar", effort : 13}
-                        ,{desc:"baz", effort : 2}
-                    ],
-                    startDate : new Date(2022,(10-1),1),
-                    availableDuration: 13,
-                    teamMembers: ["Engr A","Engr B", "Engr C"]
+                    tasks: toSGObject(CSVToArray(document.forms[0].tasks.value),toDelimiter(document.forms[0].format.value)),
+                    startDate : document.forms[0].startDate.valueAsDate,
+                    availableDuration: document.forms[0].availableDuration.valueAsNumber,
+                    teamMembers: {length : document.forms[0].teamMemberCount.valueAsNumber},//["Engr1","Engr2","Engr3","Engr4","Engr5","Engr6",],
+                    diffTolerance: 0.5
                 };
                 let displayAt = document.getElementById("sgcc");
 
@@ -119,6 +261,33 @@
     </head>
     <body>
         <h1>Simple Gantt Chart Generator</h1>
+        <form id="chartInput">
+            <label>Number of team Members: </label> <input type="number" name="teamMemberCount"/>
+            <label>Start Date: </label>             <input type="date" name="startDate"/>
+            <label>Available Duration: </label>     <input type="number" name="availableDuration"/>
+            <br/>
+            <label>Tasks: </label> <input type="radio" name="format" value="csv" checked>CSV</input> <input type="radio" name="format" value="tsv">TSV</input>
+            <br/>
+            <textarea name="tasks" rows="15" cols="100">"task1",1
+"task2",6
+"task3",3
+"task4",2
+"task5",2
+"task6",4
+"task7",2
+"task8",2
+"task9",2.4
+"task10",3
+"task11",1
+"task12",2
+"task13",2.5
+"task14",2
+"task15",0
+"task16",10
+"task17",2
+            </textarea>
+            <button onclick="demo();return false;">Generate Gantt Chart</button>
+        </form>
         <div id="sgcc"></div>
     </body>
 </html>
